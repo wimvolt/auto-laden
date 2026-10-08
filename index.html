@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="nl">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Auto laden</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: één smalle kolom voor de telefoon; drie velden, één grote knop, status eronder. */
+:root{
+  --bg:#edf1f3; --panel:#ffffff; --ink:#13212b; --muted:#566774; --line:#cdd7dd;
+  --accent:#0a6c5a; --accent-ink:#ffffff; --warn:#8a4b00; --warn-bg:#fdf0dc; --bad:#a3262a;
+  --font:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f171c; --panel:#18232a; --ink:#e8eff2; --muted:#9bb0ba; --line:#2d3e48;
+  --accent:#3fc2a5; --accent-ink:#06231d; --warn:#f0c27a; --warn-bg:#33270f; --bad:#ff8a8d; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f171c; --panel:#18232a; --ink:#e8eff2; --muted:#9bb0ba; --line:#2d3e48;
+  --accent:#3fc2a5; --accent-ink:#06231d; --warn:#f0c27a; --warn-bg:#33270f; --bad:#ff8a8d; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:17px;line-height:1.45;
+  padding-inline:16px;padding-block:20px}
+main{max-width:30rem;margin-inline:auto;display:flex;flex-direction:column;gap:18px}
+h1{font-size:1.6rem;margin:0;text-wrap:balance}
+.sub{color:var(--muted);margin:2px 0 0}
+form{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:16px}
+label{display:flex;flex-direction:column;gap:6px;font-weight:700;min-width:0}
+label small{font-weight:400;color:var(--muted)}
+input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0;width:100%;box-sizing:border-box}
+input:focus-visible,select:focus-visible,.go:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.slim{display:flex;flex-direction:column;gap:16px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:360px){.row{grid-template-columns:1fr}}
+.preview{padding:12px 14px;border-radius:8px;background:var(--bg);border:1px solid var(--line)}
+.preview b{font-variant-numeric:tabular-nums}
+.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.go{display:block;text-align:center;text-decoration:none;font-weight:700;font-size:1.1rem;background:var(--accent);color:var(--accent-ink);padding:16px;border-radius:10px}
+.go[aria-disabled="true"]{opacity:.45;pointer-events:none}
+.err{color:var(--bad);min-height:1.4em;margin:0}
+.help{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px}
+.help h2{font-size:1rem;margin:0 0 6px}
+.help ol{margin:0;padding-left:1.2em;color:var(--muted)}
+</style>
+
+<main>
+  <header>
+    <h1>Auto laden</h1>
+    <p class="sub">Kia EV3 · Zaptec · goedkoopste uren via SLIM</p>
+  </header>
+
+  <form id="f" autocomplete="off">
+    <label for="strat">Wat moet de auto doen?
+      <select id="strat">
+        <option value="SLIM">SLIM: vol voor een deadline, tegen de laagste kosten</option>
+        <option value="DIRECT">DIRECT: meteen laden</option>
+        <option value="ZON">ZON: alleen laden met overschot van de zonnepanelen</option>
+        <option value="GOEDKOOP">GOEDKOOP: alleen in de goedkope uren</option>
+        <option value="UIT">UIT: stoppen en niets laden</option>
+      </select>
+    </label>
+    <div id="slimvelden" class="slim">
+    <label for="kwh">Hoeveel kWh erbij?
+      <input id="kwh" type="number" inputmode="numeric" min="1" max="80" step="1" value="14">
+      <small>Van ongeveer 85% naar 100% is circa 14 kWh. Heel getal, 1 tot 80.</small>
+    </label>
+    <div class="row">
+      <label for="dag">Klaar op
+        <select id="dag">
+          <option value="0">Vandaag</option>
+          <option value="1">Morgen</option>
+          <option value="2">Overmorgen</option>
+        </select>
+      </label>
+      <label for="tijd">Klaar om
+        <input id="tijd" type="time" value="17:00" step="900" min="06:00" max="23:45">
+      </label>
+    </div>
+    </div>
+    <label for="pin">Pincode
+      <input id="pin" type="password" inputmode="numeric" autocomplete="off">
+    </label>
+    <div id="preview" class="preview" aria-live="polite"></div>
+    <p id="err" class="err" role="alert"></p>
+    <a id="go" class="go" href="#" target="_blank" rel="noopener" aria-disabled="true">Start het laden</a>
+  </form>
+
+  <section class="help">
+    <h2>Zo werkt het</h2>
+    <ol>
+      <li>Kies SLIM, ZON of UIT. Bij SLIM vul je ook kWh, dag en tijd in. Tik daarna op de knop onderaan.</li>
+      <li>Er opent een tabblad dat leeg of wit blijft. Dat is normaal. Sluit het tabblad.</li>
+      <li>Op je telefoon komt een Homey-melding met wat is ingesteld. Staat daar NIET GEDAAN, of komt er geen melding, dan is er niets veranderd.</li>
+    </ol>
+  </section>
+</main>
+
+<script>
+// Het webhook-ID staat bewust niet in deze pagina. Het komt uit de persoonlijke link (#h=...) en wordt onthouden.
+let HID = '';
+try { const m = location.hash.match(/h=([0-9a-f]{24})/i); if (m) { HID = m[1]; try { localStorage.setItem('ev_hid', HID); } catch (e) {} } } catch (e) {}
+if (!HID) { try { HID = localStorage.getItem('ev_hid') || ''; } catch (e) {} }
+const BASE = 'https://webhook.homey.app/' + HID + '/ev_invoer';
+const $ = id => document.getElementById(id);
+const go = $('go'), err = $('err'), prev = $('preview');
+
+try { const p = localStorage.getItem('ev_pin'); if (p) $('pin').value = p; } catch (e) {}
+
+function whenLabel(dag, tijd) {
+  const d = new Date(); d.setDate(d.getDate() + dag);
+  const dagNaam = new Intl.DateTimeFormat('nl-NL', {weekday:'long', day:'numeric', month:'long'}).format(d);
+  return dagNaam + ' om ' + tijd;
+}
+
+const TEKST = {
+  DIRECT: 'DIRECT: de auto laadt meteen, zonder op prijs of zon te letten.',
+  ZON: 'ZON: de auto laadt alleen met zonne-overschot. Er is geen deadline.',
+  GOEDKOOP: 'GOEDKOOP: de auto laadt alleen in de goedkope uren. Er is geen deadline.',
+  UIT: 'UIT: het laden stopt.'
+};
+const KNOP = {DIRECT:'Laad direct', ZON:'Zet op ZON', GOEDKOOP:'Laad goedkoop', UIT:'Stop het laden'};
+
+function update() {
+  const strat = $('strat').value, slim = strat === 'SLIM';
+  $('slimvelden').hidden = !slim;
+  const kwh = Number($('kwh').value), dag = Number($('dag').value), tijd = $('tijd').value, pin = $('pin').value.trim();
+  let problem = '';
+  if (!HID) problem = 'Open de persoonlijke link die je hebt gekregen. Zonder die link werkt deze pagina niet.';
+  else if (!pin) problem = 'Vul de pincode in.';
+  else if (!slim) problem = '';
+  else if (!Number.isInteger(kwh) || kwh < 1 || kwh > 80) problem = 'Vul een heel getal in van 1 tot 80 kWh.';
+  else if (!/^([01]?\d|2[0-3]):(00|15|30|45)$/.test(tijd) || tijd < '06:00') problem = 'Kies een kwartier tussen 06:00 en 23:45.';
+  else if (dag === 0) {
+    const [h, m] = tijd.split(':').map(Number), n = new Date();
+    if (h * 60 + m <= n.getHours() * 60 + n.getMinutes()) problem = 'Deze tijd is vandaag al voorbij. Kies Morgen of een latere tijd.';
+  }
+  err.textContent = problem;
+  const ok = !problem;
+  go.setAttribute('aria-disabled', ok ? 'false' : 'true');
+  prev.classList.toggle('warn', false);
+  if (ok) {
+    prev.innerHTML = slim ? 'SLIM: <b>' + kwh + ' kWh</b> erbij, klaar op <b>' + whenLabel(dag, tijd) + '</b>.'
+      : TEKST[strat];
+    go.textContent = slim ? 'Start SLIM laden' : KNOP[strat];
+    const parts = slim ? [pin, strat, kwh, tijd, dag] : [pin, strat, 0, '00:00', 0];
+    go.href = BASE + '?tag=' + encodeURIComponent(parts.join(';'));
+  } else {
+    prev.textContent = 'Vul alles in om de samenvatting te zien.';
+    go.href = '#';
+  }
+}
+['strat','kwh','dag','tijd','pin'].forEach(id => $(id).addEventListener('input', update));
+$('pin').addEventListener('change', () => { try { localStorage.setItem('ev_pin', $('pin').value.trim()); } catch (e) {} });
+go.addEventListener('click', e => { if (go.getAttribute('aria-disabled') === 'true') e.preventDefault(); });
+$('f').addEventListener('submit', e => e.preventDefault());
+update();
+</script>
