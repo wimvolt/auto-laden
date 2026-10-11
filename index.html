@@ -28,6 +28,7 @@ label{display:flex;flex-direction:column;gap:6px;font-weight:700;min-width:0}
 label small{font-weight:400;color:var(--muted)}
 input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0;width:100%;box-sizing:border-box}
 input:focus-visible,select:focus-visible,.go:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
 .slim{display:flex;flex-direction:column;gap:16px}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:360px){.row{grid-template-columns:1fr}}
@@ -59,9 +60,23 @@ input:focus-visible,select:focus-visible,.go:focus-visible{outline:3px solid var
       </select>
     </label>
     <div id="slimvelden" class="slim">
-    <label for="kwh">Hoeveel kWh erbij?
+    <label for="modus">Hoe geef je de hoeveelheid op?
+      <select id="modus">
+        <option value="soc">Via SoC (huidig en doel in %)</option>
+        <option value="kwh">Zelf kWh opgeven</option>
+      </select>
+    </label>
+    <div id="socvelden" class="row">
+      <label for="soc0">Nu (SoC %)
+        <input id="soc0" type="number" inputmode="numeric" min="0" max="99" step="1" placeholder="bijv. 36">
+      </label>
+      <label for="soc1">Doel (SoC %)
+        <input id="soc1" type="number" inputmode="numeric" min="1" max="100" step="1" value="100">
+      </label>
+    </div>
+    <label for="kwh" id="kwhveld">Hoeveel kWh erbij?
       <input id="kwh" type="number" inputmode="numeric" min="1" max="80" step="1" value="14">
-      <small>Van ongeveer 85% naar 100% is circa 14 kWh. Heel getal, 1 tot 80.</small>
+      <small>Heel getal, 1 tot 80. Een te grote waarde mag: dan laadt SLIM zo veel mogelijk tot de eindtijd.</small>
     </label>
     <div class="row">
       <label for="dag">Klaar op
@@ -87,7 +102,7 @@ input:focus-visible,select:focus-visible,.go:focus-visible{outline:3px solid var
   <section class="help">
     <h2>Zo werkt het</h2>
     <ol>
-      <li>Kies SLIM, ZON of UIT. Bij SLIM vul je ook kWh, dag en tijd in. Tik daarna op de knop onderaan.</li>
+      <li>Kies SLIM, ZON of UIT. Bij SLIM vul je het huidige en het gewenste SoC in (of zelf kWh), plus dag en tijd. Tik daarna op de knop onderaan.</li>
       <li>Er opent een tabblad dat leeg of wit blijft. Dat is normaal. Sluit het tabblad.</li>
       <li>Op je telefoon komt een Homey-melding met wat is ingesteld. Staat daar NIET GEDAAN, of komt er geen melding, dan is er niets veranderd.</li>
     </ol>
@@ -99,11 +114,14 @@ input:focus-visible,select:focus-visible,.go:focus-visible{outline:3px solid var
 let HID = '';
 try { const m = location.hash.match(/h=([0-9a-f]{24})/i); if (m) { HID = m[1]; try { localStorage.setItem('ev_hid', HID); } catch (e) {} } } catch (e) {}
 if (!HID) { try { HID = localStorage.getItem('ev_hid') || ''; } catch (e) {} }
+const KWH_PER_PCT = 0.85; // gemeten 11 okt 2026: 54,6 kWh aan de paal voor 64 procentpunt (81,4 kWh accu, incl. laadverlies)
+const MAX_KW = 10.6;     // 16 A op drie fasen; in de praktijk 14-16 A
 const BASE = 'https://webhook.homey.app/' + HID + '/ev_invoer';
 const $ = id => document.getElementById(id);
 const go = $('go'), err = $('err'), prev = $('preview');
 
 try { const p = localStorage.getItem('ev_pin'); if (p) $('pin').value = p; } catch (e) {}
+try { const t = localStorage.getItem('ev_soc1'); if (t) $('soc1').value = t; const md = localStorage.getItem('ev_modus'); if (md) $('modus').value = md; } catch (e) {}
 
 function whenLabel(dag, tijd) {
   const d = new Date(); d.setDate(d.getDate() + dag);
@@ -119,15 +137,32 @@ const TEKST = {
 };
 const KNOP = {DIRECT:'Laad direct', ZON:'Zet op ZON', GOEDKOOP:'Laad goedkoop', UIT:'Stop het laden'};
 
+function minutenTot(dag, tijd) {
+  const [h, m] = tijd.split(':').map(Number), d = new Date();
+  d.setDate(d.getDate() + dag); d.setHours(h, m, 0, 0);
+  return (d - new Date()) / 60000;
+}
+
 function update() {
-  const strat = $('strat').value, slim = strat === 'SLIM';
+  const strat = $('strat').value, slim = strat === 'SLIM', soc = $('modus').value === 'soc';
   $('slimvelden').hidden = !slim;
-  const kwh = Number($('kwh').value), dag = Number($('dag').value), tijd = $('tijd').value, pin = $('pin').value.trim();
+  $('socvelden').hidden = !(slim && soc);
+  $('kwhveld').hidden = !(slim && !soc);
+  const dag = Number($('dag').value), tijd = $('tijd').value, pin = $('pin').value.trim();
+  const s0 = Number($('soc0').value), s1 = Number($('soc1').value);
+  let kwh = Number($('kwh').value), kapNote = '';
   let problem = '';
+  if (slim && soc && $('soc0').value !== '' && Number.isInteger(s0) && Number.isInteger(s1) && s1 > s0) {
+    kwh = Math.ceil((s1 - s0) * KWH_PER_PCT);
+    if (kwh > 80) { kwh = 80; kapNote = ' (begrensd op 80 kWh)'; }
+  }
   if (!HID) problem = 'Open de persoonlijke link die je hebt gekregen. Zonder die link werkt deze pagina niet.';
   else if (!pin) problem = 'Vul de pincode in.';
   else if (!slim) problem = '';
-  else if (!Number.isInteger(kwh) || kwh < 1 || kwh > 80) problem = 'Vul een heel getal in van 1 tot 80 kWh.';
+  else if (soc && (!Number.isInteger(s0) || $('soc0').value === '' || s0 < 0 || s0 > 99)) problem = 'Vul het huidige SoC in (0 tot 99%).';
+  else if (soc && (!Number.isInteger(s1) || s1 < 1 || s1 > 100)) problem = 'Vul een doel-SoC in (1 tot 100%).';
+  else if (soc && s1 <= s0) problem = 'Het doel moet hoger zijn dan het huidige SoC.';
+  else if (!soc && (!Number.isInteger(kwh) || kwh < 1 || kwh > 80)) problem = 'Vul een heel getal in van 1 tot 80 kWh.';
   else if (!/^([01]?\d|2[0-3]):(00|15|30|45)$/.test(tijd) || tijd < '06:00') problem = 'Kies een kwartier tussen 06:00 en 23:45.';
   else if (dag === 0) {
     const [h, m] = tijd.split(':').map(Number), n = new Date();
@@ -136,10 +171,19 @@ function update() {
   err.textContent = problem;
   const ok = !problem;
   go.setAttribute('aria-disabled', ok ? 'false' : 'true');
-  prev.classList.toggle('warn', false);
+  let warn = false;
   if (ok) {
-    prev.innerHTML = slim ? 'SLIM: <b>' + kwh + ' kWh</b> erbij, klaar op <b>' + whenLabel(dag, tijd) + '</b>.'
-      : TEKST[strat];
+    if (slim) {
+      let t = 'SLIM: <b>' + kwh + ' kWh</b> erbij' + kapNote + ', klaar op <b>' + whenLabel(dag, tijd) + '</b>.';
+      if (soc) t = 'SLIM: van <b>' + s0 + '%</b> naar <b>' + s1 + '%</b> = ca. <b>' + kwh + ' kWh</b>' + kapNote + ', klaar op <b>' + whenLabel(dag, tijd) + '</b>.';
+      const max = Math.floor(minutenTot(dag, tijd) / 60 * MAX_KW);
+      if (kwh > max) {
+        warn = true;
+        t += '<br>Let op: tot die tijd past maximaal ca. <b>' + Math.max(max, 0) + ' kWh</b>.';
+        if (soc) t += ' Het SoC komt dan op ca. <b>' + Math.min(100, Math.round(s0 + Math.max(max, 0) / KWH_PER_PCT)) + '%</b>.';
+      }
+      prev.innerHTML = t;
+    } else prev.textContent = TEKST[strat];
     go.textContent = slim ? 'Start SLIM laden' : KNOP[strat];
     const parts = slim ? [pin, strat, kwh, tijd, dag] : [pin, strat, 0, '00:00', 0];
     go.href = BASE + '?tag=' + encodeURIComponent(parts.join(';'));
@@ -147,8 +191,11 @@ function update() {
     prev.textContent = 'Vul alles in om de samenvatting te zien.';
     go.href = '#';
   }
+  prev.classList.toggle('warn', warn);
 }
-['strat','kwh','dag','tijd','pin'].forEach(id => $(id).addEventListener('input', update));
+['strat','modus','soc0','soc1','kwh','dag','tijd','pin'].forEach(id => $(id).addEventListener('input', update));
+$('soc1').addEventListener('change', () => { try { localStorage.setItem('ev_soc1', $('soc1').value); } catch (e) {} });
+$('modus').addEventListener('change', () => { try { localStorage.setItem('ev_modus', $('modus').value); } catch (e) {} });
 $('pin').addEventListener('change', () => { try { localStorage.setItem('ev_pin', $('pin').value.trim()); } catch (e) {} });
 go.addEventListener('click', e => { if (go.getAttribute('aria-disabled') === 'true') e.preventDefault(); });
 $('f').addEventListener('submit', e => e.preventDefault());
