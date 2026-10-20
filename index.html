@@ -62,16 +62,18 @@ input:focus-visible,select:focus-visible,.go:focus-visible{outline:3px solid var
     <div id="slimvelden" class="slim">
     <label for="modus">Hoe geef je de hoeveelheid op?
       <select id="modus">
-        <option value="soc">Via SoC (huidig en doel in %)</option>
+        <option value="soc">Via SoC (doel in %)</option>
         <option value="kwh">Zelf kWh opgeven</option>
       </select>
     </label>
     <div id="socvelden" class="row">
       <label for="soc0">Nu (SoC %)
-        <input id="soc0" type="number" inputmode="numeric" min="0" max="99" step="1" placeholder="bijv. 36">
+        <input id="soc0" type="number" inputmode="numeric" min="0" max="99" step="1" placeholder="auto">
+        <small>Leeg laten: Homey weet het zelf.</small>
       </label>
       <label for="soc1">Doel (SoC %)
-        <input id="soc1" type="number" inputmode="numeric" min="1" max="100" step="1" value="100">
+        <input id="soc1" type="number" inputmode="numeric" min="1" max="100" step="1" value="90">
+        <small>Thuis laadt de auto tot max. 90%.</small>
       </label>
     </div>
     <label for="kwh" id="kwhveld">Hoeveel kWh erbij?
@@ -102,7 +104,7 @@ input:focus-visible,select:focus-visible,.go:focus-visible{outline:3px solid var
   <section class="help">
     <h2>Zo werkt het</h2>
     <ol>
-      <li>Kies SLIM, ZON of UIT. Bij SLIM vul je het huidige en het gewenste SoC in (of zelf kWh), plus dag en tijd. Tik daarna op de knop onderaan.</li>
+      <li>Kies SLIM, ZON of UIT. Bij SLIM vul je het gewenste SoC in (of zelf kWh), plus dag en tijd. Het huidige SoC mag leeg blijven: Homey kent het van de auto. Tik daarna op de knop onderaan.</li>
       <li>Er opent een tabblad dat leeg of wit blijft. Dat is normaal. Sluit het tabblad.</li>
       <li>Op je telefoon komt een Homey-melding met wat is ingesteld. Staat daar NIET GEDAAN, of komt er geen melding, dan is er niets veranderd.</li>
     </ol>
@@ -150,18 +152,19 @@ function update() {
   $('kwhveld').hidden = !(slim && !soc);
   const dag = Number($('dag').value), tijd = $('tijd').value, pin = $('pin').value.trim();
   const s0 = Number($('soc0').value), s1 = Number($('soc1').value);
+  const auto = slim && soc && $('soc0').value === '';
   let kwh = Number($('kwh').value), kapNote = '';
   let problem = '';
-  if (slim && soc && $('soc0').value !== '' && Number.isInteger(s0) && Number.isInteger(s1) && s1 > s0) {
+  if (slim && soc && !auto && Number.isInteger(s0) && Number.isInteger(s1) && s1 > s0) {
     kwh = Math.ceil((s1 - s0) * KWH_PER_PCT);
     if (kwh > 80) { kwh = 80; kapNote = ' (begrensd op 80 kWh)'; }
   }
   if (!HID) problem = 'Open de persoonlijke link die je hebt gekregen. Zonder die link werkt deze pagina niet.';
   else if (!pin) problem = 'Vul de pincode in.';
   else if (!slim) problem = '';
-  else if (soc && (!Number.isInteger(s0) || $('soc0').value === '' || s0 < 0 || s0 > 99)) problem = 'Vul het huidige SoC in (0 tot 99%).';
+  else if (soc && !auto && (!Number.isInteger(s0) || s0 < 0 || s0 > 99)) problem = 'Vul het huidige SoC in (0 tot 99%), of laat het leeg.';
   else if (soc && (!Number.isInteger(s1) || s1 < 1 || s1 > 100)) problem = 'Vul een doel-SoC in (1 tot 100%).';
-  else if (soc && s1 <= s0) problem = 'Het doel moet hoger zijn dan het huidige SoC.';
+  else if (soc && !auto && s1 <= s0) problem = 'Het doel moet hoger zijn dan het huidige SoC.';
   else if (!soc && (!Number.isInteger(kwh) || kwh < 1 || kwh > 80)) problem = 'Vul een heel getal in van 1 tot 80 kWh.';
   else if (!/^([01]?\d|2[0-3]):(00|15|30|45)$/.test(tijd) || tijd < '06:00') problem = 'Kies een kwartier tussen 06:00 en 23:45.';
   else if (dag === 0) {
@@ -176,8 +179,9 @@ function update() {
     if (slim) {
       let t = 'SLIM: <b>' + kwh + ' kWh</b> erbij' + kapNote + ', klaar op <b>' + whenLabel(dag, tijd) + '</b>.';
       if (soc) t = 'SLIM: van <b>' + s0 + '%</b> naar <b>' + s1 + '%</b> = ca. <b>' + kwh + ' kWh</b>' + kapNote + ', klaar op <b>' + whenLabel(dag, tijd) + '</b>.';
+      if (auto) t = 'SLIM: naar <b>' + s1 + '%</b>, klaar op <b>' + whenLabel(dag, tijd) + '</b>. Homey rekent met het actuele SoC van de auto; het aantal kWh staat in de melding.' + (s1 > 90 ? '<br>Let op: thuis stopt de auto bij 90%.' : '');
       const max = Math.floor(minutenTot(dag, tijd) / 60 * MAX_KW);
-      if (kwh > max) {
+      if (!auto && kwh > max) {
         warn = true;
         t += '<br>Let op: tot die tijd past maximaal ca. <b>' + Math.max(max, 0) + ' kWh</b>.';
         if (soc) t += ' Het SoC komt dan op ca. <b>' + Math.min(100, Math.round(s0 + Math.max(max, 0) / KWH_PER_PCT)) + '%</b>.';
@@ -185,7 +189,7 @@ function update() {
       prev.innerHTML = t;
     } else prev.textContent = TEKST[strat];
     go.textContent = slim ? 'Start SLIM laden' : KNOP[strat];
-    const parts = slim ? [pin, strat, kwh, tijd, dag] : [pin, strat, 0, '00:00', 0];
+    const parts = slim ? [pin, strat, auto ? 'S' + s1 : kwh, tijd, dag] : [pin, strat, 0, '00:00', 0];
     go.href = BASE + '?tag=' + encodeURIComponent(parts.join(';'));
   } else {
     prev.textContent = 'Vul alles in om de samenvatting te zien.';
